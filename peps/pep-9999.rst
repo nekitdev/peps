@@ -1,0 +1,144 @@
+PEP: 9999
+Title: Higher-Kinded TypeVars
+Author: Nikita Tikhonov <nekitdevofficial@gmail.com>
+Sponsor: Jelle Ziljstra <jelle.zijlstra@gmail.com>
+Discussions-To: https://github.com/nekitdev/peps/discussions
+Status: Draft
+Type: Standards Track
+Topic: Typing
+Content-Type: text/x-rst
+Created: 24-Jul-2022
+Python-Version: 3.14
+
+Abstract
+========
+
+:pep:`484` introduced ``TypeVar``, enabling generics parametrized with a single type.
+``TypeVar`` itself cannot be generic, though, and this PEP introduces
+parametrization of type variables - that is, a generic ``TypeVar``, enabling *Higher-Kinded Types*
+(*HKTs*). This enables a variety of use cases, in particular, it allows to write code generic
+over *type constructors*, instead of being generic over *types* only.
+
+Motivation
+==========
+
+HKTs have long been a requested feature, for quite some use cases [#typing-548]_.
+
+.. code:: python
+
+    from typing import Callable, Iterable, TypeVar
+
+    T = TypeVar("T")
+    U = TypeVar("U")
+
+    I = TypeVar("I", bound=Iterable)
+
+
+    def map_iterable(function: Callable[[T], U], iterable: I[T]) -> I[U]:
+        return type(iterable)(map(function, iterable))
+
+
+    reveal_type(map_iterable(str, [1, 2, 3]))  # list[str]
+    reveal_type(map_iterable(str, (1, 2, 3)))  # tuple[str]
+    reveal_type(map_iterable(str, {1: 1}))  # fails!
+    # `dict` can not be initialized from `Iterable[str]`
+
+.. code:: python
+
+    from typing import Callable, Self, TypeVar
+
+    T = TypeVar("T")
+    U = TypeVar("U")
+
+
+    class Functor(Protocol[T]):
+        def map(self: Self[T], function: Callable[[T], U]) -> Self[U]:
+            ...
+
+.. code:: python
+
+    from dataclasses import dataclass
+    from typing import Self, TypeVar
+
+    T = TypeVar("T")
+    U = TypeVar("U")
+
+
+    @dataclass
+    class Wrap(Functor[T]):
+        value: T
+
+        def map(self: Self[T], function: Callable[[T], U]) -> Self[U]:
+            return type(self)(function(self.value))
+
+.. code:: python
+
+    from typing import Mapping, MutableMapping
+
+    K = TypeVar("K")
+    V = TypeVar("V")
+
+
+    # taken from https://github.com/jab/bidict
+    class BidirectionalMapping(Mapping[K, V]):
+        """One-to-one `Mapping[K, V]`; the inverse `Mapping[V, K]` is maintained
+        alongside the forward mapping.
+        """
+
+        @property
+        def inverse(self: Self[K, V]) -> Self[V, K]:
+            ...
+
+
+    class bidict(BidirectionalMapping[K, V], MutableMapping[K, V]):
+         """Mutable `BidirectionalMapping[K, V]` type."""
+         # thanks to HKTs, no need to override `inverse` in subclasses like this one just to tell
+         # type checkers that bd.inverse is a `bidict[V, K]`, not just a `BidirectionalMapping[V, K]`.
+         # Without HKTs, every subclass must resort to hard-coding the subtype in an override:
+         # - https://github.com/jab/bidict/blob/v0.22.0/bidict/_base.py#L165-L170
+         # - https://github.com/jab/bidict/blob/v0.22.0/bidict/_frozenbidict.py#L27-L31
+         # - https://github.com/jab/bidict/blob/v0.22.0/bidict/_bidict.py#L28-L30
+         # - https://github.com/jab/bidict/blob/v0.22.0/bidict/_orderedbidict.py#L32-L34
+         # - etc. 
+
+.. code:: python
+
+    >>> atomic_number_by_element = bidict({"hydrogen": 1})  # bidict[str, int]
+    >>> atomic_number_by_element.inverse  # bidict[int, str]
+    bidict({1: "hydrogen"})
+
+
+Prior Art
+=========
+
+[#returns-hkt]_.
+
+Specification
+=============
+
+Implementation
+==============
+
+References
+==========
+
+.. [#typing-548] Python ``typing`` issue #548:
+   https://github.com/python/typing/issues/548
+
+.. [#returns-hkt] Python ``returns`` library:
+   https://returns.readthedocs.io/en/latest/pages/hkt.html
+
+Copyright
+=========
+
+This document is placed in the public domain or under the
+CC0-1.0-Universal license, whichever is more permissive.
+
+..
+   Local Variables:
+   mode: indented-text
+   indent-tabs-mode: nil
+   sentence-end-double-space: t
+   fill-column: 70
+   coding: utf-8
+   End:
