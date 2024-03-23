@@ -1,0 +1,2 @@
+Due to a restructuring of the upstream PEP repo, PEP-9999 has been moved to
+`peps/pep-9999.rst <peps/pep-9999.rst>`_.
